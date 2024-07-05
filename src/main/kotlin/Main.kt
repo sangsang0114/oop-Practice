@@ -19,12 +19,12 @@ fun main() {
 }
 
 class Customer(private val name: String) {
-    private val cart = mutableListOf<Pair<Product, Int>>()
+    private val cart = mutableListOf<CartItem>()
     private val customerId = "${name}-${LocalDateTime.now()}"
     private val card = Card()
     fun addToCart(product: Product, quantity: Int) {
         // cart.add(Pair(product, quantity))
-        cart.add(product to quantity)
+        cart.add(CartItem(product, quantity))
     }
 
     fun requestCheckout(martOwner: MartOwner): Payment {
@@ -44,16 +44,29 @@ class Card {
 }
 
 data class MartOwner(val name: String) {
-    fun createPayment(customerId: String, cart: List<Pair<Product, Int>>): Payment {
+    private val paymentBox = mutableListOf<Payment>()
+    fun createPayment(customerId: String, cart: List<CartItem>): Payment {
         val totalPrice: Int = cart
-            .map { (product, quantity) -> product.price * quantity }
+            .map { it.getTotalPrice() }
             .reduce { acc, price -> acc + price }
-        return Payment(customerId, cart, totalPrice)
+        val payment = Payment(customerId, cart, totalPrice)
+        paymentBox.add(payment)
+
+        return payment
     }
 
     fun processPayment(card: Card, payment: Payment) {
         card.checkout(payment)
         TODO("???")
+    }
+}
+
+class CartItem(
+    private val product: Product,
+    private val quantity: Int
+) {
+    fun getTotalPrice(): Int {
+        return product.price * quantity
     }
 }
 
@@ -65,12 +78,21 @@ data class Product(
 
 class Payment(
     private val customerId: String,
-    private val purchaseInfo: List<Pair<Product, Int>>,
+    private val purchaseInfo: List<CartItem>,
     private val totalPrice: Int,
     private var paidAt: LocalDateTime? = null
 ) {
     fun paid() {
         this.paidAt = LocalDateTime.now()
+    }
+
+    fun printPayment(): String {
+        return """
+            --- 구매내역 ---
+            TODO("구매내역")
+            --- 총 가격 ---
+            $totalPrice
+        """.trimIndent()
     }
 
     private val paymentId: String = "payment-$customerId-${LocalDateTime.now()}"
