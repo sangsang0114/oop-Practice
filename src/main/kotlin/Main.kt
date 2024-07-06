@@ -1,14 +1,32 @@
 package org.yoon
 
+import org.yoon.discountPolicy.ExpirationDiscountPolicy
+import org.yoon.discountPolicy.NightTimeDiscountPolicy
+import org.yoon.discountPolicy.NoDiscountPolicy
 import java.time.LocalDate
 import java.time.LocalDateTime
 
 fun main() {
     val customer = Customer("yoon")
     val martOwner = MartOwner("이마트")
-    val cola = Product("콜라", 1000, LocalDate.now().plusDays(1))
-    val snack = Product("새우 과자", 1000, LocalDate.now().plusDays(1))
-    val egg = Product("계란", 500, LocalDate.now().plusDays(10))
+    val cola = Product(
+        "콜라",
+        1000,
+        LocalDate.now().plusDays(1),
+        listOf(ExpirationDiscountPolicy(), NightTimeDiscountPolicy(), NoDiscountPolicy())
+    )
+    val snack = Product(
+        "새우 과자",
+        1000,
+        LocalDate.now().plusDays(1),
+        listOf(ExpirationDiscountPolicy(), NightTimeDiscountPolicy(), NoDiscountPolicy())
+    )
+    val egg = Product(
+        "계란",
+        500,
+        LocalDate.now().plusDays(10),
+        listOf(ExpirationDiscountPolicy(), NightTimeDiscountPolicy(), NoDiscountPolicy())
+    )
 
     customer.addToCart(cola, 10)
     customer.addToCart(egg, 30)
@@ -19,7 +37,7 @@ fun main() {
 }
 
 class Customer(private val name: String) {
-    private val cart = mutableListOf<CartItem>()
+    private val cart = Cart()
     private val customerId = "${name}-${LocalDateTime.now()}"
     private val card = Card()
     fun addToCart(product: Product, quantity: Int) {
@@ -36,6 +54,18 @@ class Customer(private val name: String) {
     }
 }
 
+class Cart {
+    private val cartItemList = mutableListOf<CartItem>()
+    fun add(cartItem: CartItem) {
+        cartItemList.add(cartItem)
+    }
+
+    fun getTotalPrice(): Int {
+        return cartItemList.map { it.getTotalPrice() }
+            .reduce { acc, price -> acc + price }
+    }
+}
+
 class Card {
     fun checkout(payment: Payment) {
         payment.paid()
@@ -45,10 +75,8 @@ class Card {
 
 data class MartOwner(val name: String) {
     private val paymentBox = mutableListOf<Payment>()
-    fun createPayment(customerId: String, cart: List<CartItem>): Payment {
-        val totalPrice: Int = cart
-            .map { it.getTotalPrice() }
-            .reduce { acc, price -> acc + price }
+    fun createPayment(customerId: String, cart: Cart): Payment {
+        val totalPrice: Int = cart.getTotalPrice()
         val payment = Payment(customerId, cart, totalPrice)
         paymentBox.add(payment)
 
@@ -66,19 +94,54 @@ class CartItem(
     private val quantity: Int
 ) {
     fun getTotalPrice(): Int {
-        return product.price * quantity
+        return product.calculatePrice(quantity)
+    }
+}
+
+interface DiscountPolicy {
+    val discountPercentage: Double
+    fun isSatisfiedBy(product: Product): Boolean
+    fun calculateDiscountAmount(originalPrice: Int, product: Product): Int {
+        return if (isSatisfiedBy(product)) {
+            originalPrice.times(discountPercentage).toInt()
+        } else {
+            0
+        }
     }
 }
 
 data class Product(
     private val name: String,
     val price: Int,
-    private val expireDate: LocalDate
-)
+    private val expireDate: LocalDate,
+    private val discountPolicyList: List<DiscountPolicy>
+) {
+    fun calculatePrice(quantity: Int): Int {
+        val bestDiscountPolicy = getDiscountPolicy()
+        val originalPrice = calculateOriginalPrice(quantity)
+        val discountPrice = bestDiscountPolicy.calculateDiscountAmount(originalPrice, this)
+        return originalPrice - discountPrice
+    }
+
+    private fun calculateOriginalPrice(quantity: Int): Int {
+        return price * quantity
+    }
+
+
+    private fun getDiscountPolicy(): DiscountPolicy {
+        return discountPolicyList
+            .filter { it.isSatisfiedBy(this) }
+            .maxByOrNull { it.discountPercentage } ?: NoDiscountPolicy()
+    }
+
+    fun isExpiredSoon(now: LocalDateTime): Boolean {
+        return expireDate.minusDays(1).equals(now)
+    }
+}
 
 class Payment(
     private val customerId: String,
-    private val purchaseInfo: List<CartItem>,
+    private val purchaseInfo: Cart,
     private val totalPrice: Int,
     private var paidAt: LocalDateTime? = null
 ) {
